@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "nnutils"
+version = "0.0.1"
+description = ""
+authors = ["Dmitry Zhukov <dzhukov@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+torch = "^2.4"
+torchvision = "*"
+pandas  = "2.2.2"
+requests  = "^2.32"
+smart_open  = "7.0.4"
+pillow  = "10.4.0"
+matplotlib  = "3.9.1"
+tqdm = "^4.66.5"
+tinygrad = "^0.9.2"
+httpx = {extras = ["http2"], version = "^0.27.2"}
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.3"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
