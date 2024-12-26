@@ -1,3 +1,0 @@
-{'loss': 0.8716433329459948, 'model_params': 40160, 'train_time': 7076.2939558029175, 'model': <class '__main__.ResNet'>, 'model_config': {'depth': 16, 'kernel_size': 5, 'residual': False}}
-{'loss': 0.7299618873840723, 'model_params': 40160, 'train_time': 7161.289367198944, 'model': <class '__main__.ResNet'>, 'model_config': {'depth': 16, 'kernel_size': 5, 'residual': True}}
-{'loss': 0.7043428472983532, 'model_params': 40449, 'train_time': 7943.857433795929, 'model': <class '__main__.GenResNet'>, 'model_config': {'depth': 16, 'kernel_size': 5}}

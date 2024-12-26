@@ -1,2 +1,0 @@
-config: {'depth': 16, 'kernel_size': 5, 'residual': False}, final_loss 0.953441331631098
-config: {'depth': 16, 'kernel_size': 5, 'residual': False}, final_loss 0.8967982805692233

@@ -10,7 +10,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
-from imagenet import ImageNetDatasetAsync
+from nnutils.imagenet import ImageNetDatasetAsync
 
 efficient_net_models = {
     "v1b0": {'input_size':(224, 224), 'model_fn': efficientnet_b0},
