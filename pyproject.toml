@@ -6,7 +6,7 @@ authors = ["Dmitry Zhukov <dzhukov@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = ">=3.10,<3.13"
 torch = "^2.4"
 torchvision = "*"
 pandas  = "^2.2"

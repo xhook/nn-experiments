@@ -43,7 +43,7 @@ class ImageNetDatasetAsync(torch.utils.data.Dataset):
         else:
             if self.client is None:
                 self.client = httpx.AsyncClient(http2=True, headers={'Authorization': str(self.auth)} if self.auth else None)  # Initialize client lazily
-            response = await self.client.get(url, timeout=httpx.Timeout(10))
+            response = await self.client.get(url, timeout=httpx.Timeout(120))
             response.raise_for_status()
             content = response.content
             if cache_file_path is not None:

@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class ResNet(nn.Module):
+class NetWithResiduals(nn.Module):
     def __init__(self, depth: int, kernel_size: int, residual: bool):
         super().__init__()
         self.depth = depth
@@ -18,7 +18,7 @@ class ResNet(nn.Module):
         x = torch.mean(x, (2, 3)) # global average pooling
         return x
 
-class GenResNet(nn.Module):
+class NetWithGeneralisedResiduals(nn.Module):
     def __init__(self, depth: int, kernel_size: int):
         super().__init__()
         self.depth = depth
