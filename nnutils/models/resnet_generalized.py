@@ -101,7 +101,6 @@ class Bottleneck(nn.Module):
         inplanes: int,
         planes: int,
         stride: int = 1,
-        downsample: Optional[nn.Module] = None,
         groups: int = 1,
         base_width: int = 64,
         norm_layer: Optional[Callable[..., nn.Module]] = None,
@@ -118,27 +117,18 @@ class Bottleneck(nn.Module):
         self.conv3 = conv1x1(width, planes * self.expansion)
         self.bn3 = norm_layer(planes * self.expansion)
         self.relu = nn.ReLU(inplace=False)
-        self.downsample = downsample
         self.stride = stride
 
     def forward(self, x: Tensor) -> Tensor:
-        identity = x
-
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.relu(out)
-
         out = self.conv2(out)
         out = self.bn2(out)
         out = self.relu(out)
-
         out = self.conv3(out)
         out = self.bn3(out)
-
-        if self.downsample is not None:
-            identity = self.downsample(x)
-
-        out = self.relu(out) + identity
+        out = self.relu(out)
         return out
 
 class ResNetLayer(nn.Module):
@@ -154,9 +144,10 @@ class ResNetLayer(nn.Module):
         base_width: int = 64,
     ) -> None:
         super().__init__()
-        downsample = None
+        self.blocks = blocks
+        self.downsample = None
         if stride != 1 or inplanes != planes * block.expansion:
-            downsample = nn.Sequential(
+            self.downsample = nn.Sequential(
                 conv1x1(inplanes, planes * block.expansion, stride),
                 norm_layer(planes * block.expansion),
             )
@@ -164,11 +155,11 @@ class ResNetLayer(nn.Module):
         layers = []
         layers.append(
             block(
-                inplanes, planes, stride, downsample, groups, base_width, norm_layer
+                inplanes, planes, stride, groups, base_width, norm_layer
             )
         )
         self.outplanes = planes * block.expansion
-        for _ in range(1, blocks):
+        for _ in range(1, self.blocks):
             layers.append(
                 block(
                     self.outplanes,
@@ -178,10 +169,17 @@ class ResNetLayer(nn.Module):
                     norm_layer=norm_layer,
                 )
             )
-        self.layers = nn.Sequential(*layers)
+        self.layers = nn.ModuleList(layers)
         
     def forward(self, x: Tensor) -> Tensor:
-        return self.layers(x)
+        identity = x
+        if self.downsample is not None:
+            identity = self.downsample(x)
+        x = self.layers[0](x) + identity
+        for i in range(1, self.blocks):
+            identity = x
+            x = self.layers[i](x) + identity
+        return x
 
 class ResNet(nn.Module):
     def __init__(
