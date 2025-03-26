@@ -105,7 +105,6 @@ class Bottleneck(nn.Module):
         groups: int = 1,
         base_width: int = 64,
         norm_layer: Optional[Callable[..., nn.Module]] = None,
-        skip_after_nonlin: bool = False,
     ) -> None:
         super().__init__()
         if norm_layer is None:
@@ -121,7 +120,6 @@ class Bottleneck(nn.Module):
         self.relu = nn.ReLU(inplace=False)
         self.downsample = downsample
         self.stride = stride
-        self.skip_after_nonlin = skip_after_nonlin
 
     def forward(self, x: Tensor) -> Tensor:
         identity = x
@@ -140,29 +138,66 @@ class Bottleneck(nn.Module):
         if self.downsample is not None:
             identity = self.downsample(x)
 
-        if self.skip_after_nonlin:
-            return self.relu(out) + identity
-        else:
-            return self.relu(out + identity)
+        return self.relu(out) + identity
 
+class ResNetLayer(nn.Module):
+    def __init__(
+        self,
+        block: Type[Union[Bottleneck]],
+        norm_layer: Callable[..., nn.Module],
+        planes: int,
+        blocks: int,
+        inplanes: int,
+        stride: int = 1,
+        groups: int = 1,
+        base_width: int = 64,
+    ) -> None:
+        super().__init__()
+        downsample = None
+        if stride != 1 or inplanes != planes * block.expansion:
+            downsample = nn.Sequential(
+                conv1x1(inplanes, planes * block.expansion, stride),
+                norm_layer(planes * block.expansion),
+            )
+
+        layers = []
+        layers.append(
+            block(
+                inplanes, planes, stride, downsample, groups, base_width, norm_layer
+            )
+        )
+        self.inplanes = planes * block.expansion
+        for _ in range(1, blocks):
+            layers.append(
+                block(
+                    inplanes,
+                    planes,
+                    groups=groups,
+                    base_width=base_width,
+                    norm_layer=norm_layer,
+                )
+            )
+        self.layers = nn.Sequential(*layers)
+        
+    def forward(self, x: Tensor) -> Tensor:
+        self.layers(x)
+        return x
 
 class ResNet(nn.Module):
     def __init__(
         self,
-        block: Type[Union[BasicBlock, Bottleneck]],
+        block: Type[Union[Bottleneck]],
         layers: List[int],
         num_classes: int = 1000,
         zero_init_residual: bool = False,
         groups: int = 1,
         width_per_group: int = 64,
         norm_layer: Optional[Callable[..., nn.Module]] = None,
-        skip_after_nonlin: bool = False,
     ) -> None:
         super().__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer
-        self.skip_after_nonlin = skip_after_nonlin
 
         self.inplanes = 64
         self.groups = groups
@@ -171,10 +206,10 @@ class ResNet(nn.Module):
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.layer1 = self._make_layer(block, 64, layers[0])
-        self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
+        self.layer1 = ResNetLayer(block, norm_layer, 64, layers[0], self.inplanes, groups=groups, base_width=width_per_group)
+        self.layer2 = ResNetLayer(block, norm_layer, 128, layers[1], self.inplanes, stride=2, groups=groups, base_width=width_per_group)
+        self.layer3 = ResNetLayer(block, norm_layer, 256, layers[2], self.inplanes, stride=2, groups=groups, base_width=width_per_group)
+        self.layer4 = ResNetLayer(block, norm_layer, 512, layers[3], self.inplanes, stride=2, groups=groups, base_width=width_per_group)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
 
@@ -194,42 +229,6 @@ class ResNet(nn.Module):
                     nn.init.constant_(m.bn3.weight, 0)  # type: ignore[arg-type]
                 elif isinstance(m, BasicBlock) and m.bn2.weight is not None:
                     nn.init.constant_(m.bn2.weight, 0)  # type: ignore[arg-type]
-
-    def _make_layer(
-        self,
-        block: Type[Union[BasicBlock, Bottleneck]],
-        planes: int,
-        blocks: int,
-        stride: int = 1,
-    ) -> nn.Sequential:
-        norm_layer = self._norm_layer
-        downsample = None
-        if stride != 1 or self.inplanes != planes * block.expansion:
-            downsample = nn.Sequential(
-                conv1x1(self.inplanes, planes * block.expansion, stride),
-                norm_layer(planes * block.expansion),
-            )
-
-        layers = []
-        layers.append(
-            block(
-                self.inplanes, planes, stride, downsample, self.groups, self.base_width, norm_layer, self.skip_after_nonlin
-            )
-        )
-        self.inplanes = planes * block.expansion
-        for _ in range(1, blocks):
-            layers.append(
-                block(
-                    self.inplanes,
-                    planes,
-                    groups=self.groups,
-                    base_width=self.base_width,
-                    norm_layer=norm_layer,
-                    skip_after_nonlin=self.skip_after_nonlin
-                )
-            )
-
-        return nn.Sequential(*layers)
 
     def _forward_impl(self, x: Tensor) -> Tensor:
         # See note [TorchScript super()]
