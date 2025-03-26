@@ -138,7 +138,8 @@ class Bottleneck(nn.Module):
         if self.downsample is not None:
             identity = self.downsample(x)
 
-        return self.relu(out) + identity
+        out = self.relu(out) + identity
+        return out
 
 class ResNetLayer(nn.Module):
     def __init__(
@@ -166,11 +167,11 @@ class ResNetLayer(nn.Module):
                 inplanes, planes, stride, downsample, groups, base_width, norm_layer
             )
         )
-        self.inplanes = planes * block.expansion
+        self.outplanes = planes * block.expansion
         for _ in range(1, blocks):
             layers.append(
                 block(
-                    inplanes,
+                    self.outplanes,
                     planes,
                     groups=groups,
                     base_width=base_width,
@@ -180,8 +181,7 @@ class ResNetLayer(nn.Module):
         self.layers = nn.Sequential(*layers)
         
     def forward(self, x: Tensor) -> Tensor:
-        self.layers(x)
-        return x
+        return self.layers(x)
 
 class ResNet(nn.Module):
     def __init__(
@@ -207,9 +207,9 @@ class ResNet(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.layer1 = ResNetLayer(block, norm_layer, 64, layers[0], self.inplanes, groups=groups, base_width=width_per_group)
-        self.layer2 = ResNetLayer(block, norm_layer, 128, layers[1], self.inplanes, stride=2, groups=groups, base_width=width_per_group)
-        self.layer3 = ResNetLayer(block, norm_layer, 256, layers[2], self.inplanes, stride=2, groups=groups, base_width=width_per_group)
-        self.layer4 = ResNetLayer(block, norm_layer, 512, layers[3], self.inplanes, stride=2, groups=groups, base_width=width_per_group)
+        self.layer2 = ResNetLayer(block, norm_layer, 128, layers[1], self.layer1.outplanes, stride=2, groups=groups, base_width=width_per_group)
+        self.layer3 = ResNetLayer(block, norm_layer, 256, layers[2], self.layer2.outplanes, stride=2, groups=groups, base_width=width_per_group)
+        self.layer4 = ResNetLayer(block, norm_layer, 512, layers[3], self.layer3.outplanes, stride=2, groups=groups, base_width=width_per_group)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
 
