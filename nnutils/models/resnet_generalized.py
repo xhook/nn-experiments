@@ -134,51 +134,57 @@ class Bottleneck(nn.Module):
 class ResNetLayer(nn.Module):
     def __init__(
         self,
-        block: Type[Union[Bottleneck]],
-        norm_layer: Callable[..., nn.Module],
-        planes: int,
-        blocks: int,
         inplanes: int,
-        stride: int = 1,
-        groups: int = 1,
-        base_width: int = 64,
+        layer_configs: list[dict[str, Any]],
     ) -> None:
         super().__init__()
-        self.blocks = blocks
-        self.downsample = None
-        if stride != 1 or inplanes != planes * block.expansion:
-            self.downsample = nn.Sequential(
-                conv1x1(inplanes, planes * block.expansion, stride),
-                norm_layer(planes * block.expansion),
-            )
 
+        self.layer_configs = layer_configs
+        identity_adapters: list[nn.Module] = []
         layers = []
-        layers.append(
-            block(
-                inplanes, planes, stride, groups, base_width, norm_layer
-            )
-        )
-        self.outplanes = planes * block.expansion
-        for _ in range(1, self.blocks):
+        for config in self.layer_configs:
+            block: Type[Union[Bottleneck]] = config["block"]
+            norm_layer: Callable[..., nn.Module] = config["norm_layer"]
+            planes: int = config["planes"]
+            blocks: int = config["blocks"]
+            stride: int = config.get("stride", 1)
+            groups: int = config.get("groups", 1)
+            base_width: int = config.get("base_width", 64)
+            
+            self.blocks = blocks
+            
+            if stride != 1 or inplanes != planes * block.expansion:
+                identity_adapters.append(nn.Sequential(
+                    conv1x1(inplanes, planes * block.expansion, stride),
+                    norm_layer(planes * block.expansion),
+                ))
+            else:
+                identity_adapters.append(nn.Identity())
+
             layers.append(
                 block(
-                    self.outplanes,
-                    planes,
-                    groups=groups,
-                    base_width=base_width,
-                    norm_layer=norm_layer,
+                    inplanes, planes, stride, groups, base_width, norm_layer
                 )
             )
+            inplanes = planes * block.expansion
+            for _ in range(1, self.blocks):
+                identity_adapters.append(nn.Identity())
+                layers.append(
+                    block(
+                        inplanes,
+                        planes,
+                        groups=groups,
+                        base_width=base_width,
+                        norm_layer=norm_layer,
+                    )
+                )
+        self.identity_adapters = nn.ModuleList(identity_adapters)
         self.layers = nn.ModuleList(layers)
         
     def forward(self, x: Tensor) -> Tensor:
-        identity = x
-        if self.downsample is not None:
-            identity = self.downsample(x)
-        x = self.layers[0](x) + identity
-        for i in range(1, self.blocks):
-            identity = x
-            x = self.layers[i](x) + identity
+        for i in range(self.blocks):
+            identity = self.identity_adapters[i](x)
+            x = identity + self.layers[i](x)
         return x
 
 class ResNet(nn.Module):
@@ -204,10 +210,12 @@ class ResNet(nn.Module):
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.layer1 = ResNetLayer(block, norm_layer, 64, layers[0], self.inplanes, groups=groups, base_width=width_per_group)
-        self.layer2 = ResNetLayer(block, norm_layer, 128, layers[1], self.layer1.outplanes, stride=2, groups=groups, base_width=width_per_group)
-        self.layer3 = ResNetLayer(block, norm_layer, 256, layers[2], self.layer2.outplanes, stride=2, groups=groups, base_width=width_per_group)
-        self.layer4 = ResNetLayer(block, norm_layer, 512, layers[3], self.layer3.outplanes, stride=2, groups=groups, base_width=width_per_group)
+        self.layers = ResNetLayer(self.inplanes, [
+            {"block": block, "norm_layer": norm_layer, "planes": 64, "blocks": layers[0], "groups": groups, "base_width": width_per_group},
+            {"block": block, "norm_layer": norm_layer, "planes": 128, "blocks": layers[1], "stride": 2, "groups": groups, "base_width": width_per_group},
+            {"block": block, "norm_layer": norm_layer, "planes": 256, "blocks": layers[2], "stride": 2, "groups": groups, "base_width": width_per_group},
+            {"block": block, "norm_layer": norm_layer, "planes": 512, "blocks": layers[3], "stride": 2, "groups": groups, "base_width": width_per_group},
+        ])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
 
@@ -235,10 +243,10 @@ class ResNet(nn.Module):
         x = self.relu(x)
         x = self.maxpool(x)
 
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
+        x = self.layers(x)
+        # x = self.layer2(x)
+        # x = self.layer3(x)
+        # x = self.layer4(x)
 
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
